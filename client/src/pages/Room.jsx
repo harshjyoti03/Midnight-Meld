@@ -40,6 +40,9 @@ export default function Room() {
 
   const isHost = room.hostId === auth.currentUser.uid;
   const isMyTurn = room.currentTurn === auth.currentUser.uid;
+  const currentTurnPlayer = room.players?.find(
+    p => p.uid === room.currentTurn
+  );
 
   const myPlayer = room.players?.find(
     (p) => p.uid === auth.currentUser.uid
@@ -224,8 +227,11 @@ export default function Room() {
 
   return (
     <div className="p-10 text-white relative">
-        <div className="absolute top-4 right-6 text-sm text-cyan-300">
-            Players: {room.players?.length || 0}
+        <div className="absolute top-4 right-6 text-sm text-cyan-300 text-right">
+            <div>Players: {room.players?.length || 0}</div>
+            <div className="text-yellow-400">
+                Turn: {currentTurnPlayer?.displayName || "-"}
+            </div>
         </div>
 
       <h2 className="mb-4">Room Code: {room.inviteCode}</h2>
@@ -236,7 +242,14 @@ export default function Room() {
           <h3>Players:</h3>
           <ul className="mb-4">
             {room.players?.map(player => (
-              <li key={player.uid}>
+              <li
+                key={player.uid}
+                className={`${
+                    room.currentTurn === player.uid
+                    ? "text-green-400 font-bold"
+                    : ""
+                }`}
+              >
                 {player.displayName}
                 {player.uid === room.hostId && " (Host)"}
               </li>
@@ -257,7 +270,18 @@ export default function Room() {
       {/* PLAYING STATE */}
       {room.status === "playing" && (
         <>
-          <h3>Current Turn: {room.currentTurn}</h3>
+          <h3 className="text-lg font-semibold mb-2">
+            {isMyTurn ? (
+                <span className="text-green-400">Your Turn</span>
+            ) : (
+                <span>
+                Turn:{" "}
+                <span className="text-yellow-400">
+                    {currentTurnPlayer?.displayName || "Loading..."}
+                </span>
+                </span>
+            )}
+          </h3>
 
           <div className="flex gap-6 my-4">
             <div>
@@ -293,12 +317,12 @@ export default function Room() {
                 key={card.id}
                 onClick={() => toggleSelect(card)}
 
-                className={`px-3 py-2 rounded cursor-pointer ${
+                className={`px-3 py-2 rounded cursor-pointer border ${
                     selectedCards.find(c => c.id === card.id)
-                    ? "bg-blue-600"
-                    : card.id === lastDrawnCardId
-                    ? "bg-purple-600"
-                    : "bg-gray-800"
+                        ? "bg-blue-600 border-blue-300 scale-105"
+                        : card.id === lastDrawnCardId
+                        ? "bg-purple-600 border-purple-300"
+                        : "bg-gray-800 border-gray-600"
                 }`}
                 >
                 {card.id}
@@ -306,7 +330,7 @@ export default function Room() {
             ))}
           </div>
 
-          {selectedCards.length >= 3 && (
+          {isMyTurn && hasDrawn && selectedCards.length >= 3 && (
             <button
               className="bg-cyan-600 px-4 py-2 rounded mb-4"
               onClick={meldCards}
@@ -323,8 +347,9 @@ export default function Room() {
             </button>
           )}
 
-          <p className="mb-2">
-            Click a card to discard and end turn.
+          <p className="mb-2 text-cyan-300">
+            Select cards to Meld.  
+            Select exactly 1 card to enable Discard.
           </p>
 
           <h3>Table Melds:</h3>
