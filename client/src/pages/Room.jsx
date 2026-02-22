@@ -8,7 +8,7 @@ export default function Room() {
   const { roomId } = useParams();
   const navigate = useNavigate();
   const [room, setRoom] = useState(null);
-  const [sortedHand, setSortedHand] = useState(null);
+
   const [hasDrawn, setHasDrawn] = useState(false);
   const [lastDrawnCardId, setLastDrawnCardId] = useState(null);
   const [drawnFromDiscard, setDrawnFromDiscard] = useState(false);
@@ -19,9 +19,6 @@ export default function Room() {
       (docSnap) => {
         if (docSnap.exists()) {
           setRoom(docSnap.data());
-          setHasDrawn(false);
-          setLastDrawnCardId(null);
-          setDrawnFromDiscard(false);
         } else {
           navigate("/lobby");
         }
@@ -42,22 +39,19 @@ export default function Room() {
 
   const myHand = myPlayer?.hand || [];
 
+  // ---------------- AUTO SORT ----------------
+
   const rankOrder = [
     "A","K","Q","J","10","9","8","7","6","5","4","3","2"
   ];
   const suitOrder = ["♠", "♥", "♣", "♦"];
 
-  const sortHand = () => {
-    const sorted = [...myHand].sort((a, b) => {
-      const rankCompare =
-        rankOrder.indexOf(a.rank) - rankOrder.indexOf(b.rank);
-      if (rankCompare !== 0) return rankCompare;
-      return suitOrder.indexOf(a.suit) - suitOrder.indexOf(b.suit);
-    });
-    setSortedHand(sorted);
-  };
-
-  const displayHand = sortedHand || myHand;
+  const sortedHand = [...myHand].sort((a, b) => {
+    const rankCompare =
+      rankOrder.indexOf(a.rank) - rankOrder.indexOf(b.rank);
+    if (rankCompare !== 0) return rankCompare;
+    return suitOrder.indexOf(a.suit) - suitOrder.indexOf(b.suit);
+  });
 
   // ---------------- START GAME ----------------
 
@@ -137,9 +131,9 @@ export default function Room() {
   const discardCard = async (card) => {
     if (!isMyTurn || !hasDrawn) return;
 
-    // 🚫 Prevent discarding card drawn from discard in same turn
+    // 🚫 Strict discard prevention
     if (drawnFromDiscard && card.id === lastDrawnCardId) {
-      alert("You cannot discard the card you just picked from discard pile.");
+      alert("You cannot discard the card drawn from discard pile in the same turn.");
       return;
     }
 
@@ -170,7 +164,6 @@ export default function Room() {
       currentTurn: nextTurn
     });
 
-    setSortedHand(null);
     setHasDrawn(false);
     setLastDrawnCardId(null);
     setDrawnFromDiscard(false);
@@ -246,11 +239,13 @@ export default function Room() {
           <h3 className="mt-6 mb-2">Your Hand:</h3>
 
           <div className="flex flex-wrap gap-2 mb-4">
-            {displayHand.map((card) => (
+            {sortedHand.map((card) => (
               <div
                 key={card.id}
-                className={`px-3 py-2 rounded cursor-pointer ${
-                  isMyTurn && hasDrawn
+                className={`px-3 py-2 rounded cursor-pointer transition-all duration-200 ${
+                  card.id === lastDrawnCardId
+                    ? "bg-blue-600 border-2 border-cyan-300"
+                    : isMyTurn && hasDrawn
                     ? "bg-red-700"
                     : "bg-gray-800"
                 }`}
@@ -260,13 +255,6 @@ export default function Room() {
               </div>
             ))}
           </div>
-
-          <button
-            className="bg-cyan px-4 py-2 rounded"
-            onClick={sortHand}
-          >
-            Sort My Hand
-          </button>
         </>
       )}
 
