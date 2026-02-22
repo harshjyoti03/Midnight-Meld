@@ -8,6 +8,7 @@ export default function Room() {
   const { roomId } = useParams();
   const navigate = useNavigate();
   const [room, setRoom] = useState(null);
+  const [sortedHand, setSortedHand] = useState(null);
 
   useEffect(() => {
     const unsubscribe = onSnapshot(
@@ -52,6 +53,8 @@ export default function Room() {
       direction: 1,
       round: 1
     });
+
+    setSortedHand(null); // reset sorting on new game
   };
 
   const leaveRoom = async () => {
@@ -67,6 +70,43 @@ export default function Room() {
 
     navigate("/lobby");
   };
+
+  const myHand =
+    room.players.find((p) => p.uid === auth.currentUser.uid)?.hand || [];
+
+  // 🔥 Custom Sort Order
+  const rankOrder = [
+    "A",
+    "K",
+    "Q",
+    "J",
+    "10",
+    "9",
+    "8",
+    "7",
+    "6",
+    "5",
+    "4",
+    "3",
+    "2"
+  ];
+
+  const suitOrder = ["♠", "♥", "♣", "♦"];
+
+  const sortHand = () => {
+    const sorted = [...myHand].sort((a, b) => {
+      const rankCompare =
+        rankOrder.indexOf(a.rank) - rankOrder.indexOf(b.rank);
+
+      if (rankCompare !== 0) return rankCompare;
+
+      return suitOrder.indexOf(a.suit) - suitOrder.indexOf(b.suit);
+    });
+
+    setSortedHand(sorted);
+  };
+
+  const displayHand = sortedHand || myHand;
 
   return (
     <div className="p-10 min-h-screen text-white">
@@ -109,18 +149,23 @@ export default function Room() {
 
           <h3 className="mt-4 mb-2">Your Hand:</h3>
 
-          <div className="flex flex-wrap gap-2">
-            {room.players
-              .find(p => p.uid === auth.currentUser.uid)
-              ?.hand?.map(card => (
-                <div
-                  key={card.id}
-                  className="px-3 py-2 bg-gray-800 rounded"
-                >
-                  {card.id}
-                </div>
-              ))}
+          <div className="flex flex-wrap gap-2 mb-4">
+            {displayHand.map((card) => (
+              <div
+                key={card.id}
+                className="px-3 py-2 bg-gray-800 rounded"
+              >
+                {card.id}
+              </div>
+            ))}
           </div>
+
+          <button
+            className="bg-cyan px-6 py-2 rounded"
+            onClick={sortHand}
+          >
+            Sort My Hand
+          </button>
         </>
       )}
 
