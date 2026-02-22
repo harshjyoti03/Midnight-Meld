@@ -75,9 +75,19 @@ export default function Room() {
 
     const { hands, remainingDeck } = dealCards(deck, playerCount);
 
+    const playerColors = [
+        "text-red-400",
+        "text-blue-400",
+        "text-green-400",
+        "text-yellow-400",
+        "text-purple-400",
+        "text-pink-400"
+    ];
+
     const updatedPlayers = room.players.map((player, index) => ({
       ...player,
-      hand: hands[index]
+      hand: hands[index],
+      color: player.color || playerColors[index % playerColors.length]
     }));
 
     const discardPile = [remainingDeck.shift()];
@@ -180,7 +190,11 @@ export default function Room() {
 
     const newMeld = {
       type: isValidSet(selectedCards) ? "set" : "run",
-      cards: selectedCards
+        createdBy: auth.currentUser.uid,
+        cards: selectedCards.map(card => ({
+            ...card,
+            addedBy: auth.currentUser.uid
+        }))
     };
 
     await updateDoc(doc(db, "rooms", roomId), {
@@ -216,7 +230,10 @@ export default function Room() {
     const updatedMelds = [...room.tableMelds];
     updatedMelds[meldIndex] = {
         ...meld,
-        cards: [...meld.cards, card]
+        cards: [
+            ...meld.cards,
+            { ...card, addedBy: auth.currentUser.uid }
+        ]
     };
 
     await updateDoc(doc(db, "rooms", roomId), {
@@ -261,22 +278,34 @@ export default function Room() {
     );
 
     if (updatedCurrentPlayer.hand.length === 0) {
-        // ROUND OVER
-
         const newScores = { ...room.scores };
 
+        const winnerUid = auth.currentUser.uid;
+
         updatedPlayers.forEach(player => {
-            if (player.uid === auth.currentUser.uid) {
-                // Winner gets points from others
-                return;
+            const playerMeldPoints = (room.tableMelds || [])
+                .filter(m => m.createdBy === player.uid)
+                .reduce((total, meld) =>
+                    total + meld.cards.reduce((t, c) => t + c.value, 0),
+                0);
+
+            const leftoverPoints = calculateHandScore(player.hand);
+
+            let roundTotal = 0;
+
+            if (player.uid === winnerUid) {
+                // Winner only gets meld points
+                roundTotal = playerMeldPoints;
+            } else {
+                // Others: meld points minus leftover
+                roundTotal = playerMeldPoints - leftoverPoints;
             }
 
-            const handScore = calculateHandScore(player.hand);
-            newScores[auth.currentUser.uid] += handScore;
-            newScores[player.uid] -= handScore;
+            newScores[player.uid] =
+                (newScores[player.uid] || 0) + roundTotal;
         });
 
-        const winnerScore = newScores[auth.currentUser.uid];
+        const winnerScore = newScores[winnerUid];
 
         await updateDoc(doc(db, "rooms", roomId), {
             players: updatedPlayers,
@@ -313,11 +342,20 @@ export default function Room() {
 
       <h3 className="mt-4 text-yellow-400">Scores:</h3>
       <ul className="mb-4">
-        {room.players?.map(player => (
-            <li key={player.uid}>
-            {player.displayName}: {room.scores?.[player.uid] || 0}
+        {room.players?.map(player => {
+            const isMe = player.uid === auth.currentUser.uid;
+
+            return (
+            <li
+                key={player.uid}
+                className={`${player.color} ${isMe ? "font-bold" : ""}`}
+            >
+                {player.displayName}
+                {isMe && " (YOU)"}:{" "}
+                {room.scores?.[player.uid] || 0}
             </li>
-        ))}
+            );
+        })}
       </ul>
 
       {/* WAITING ROOM */}
@@ -448,11 +486,41 @@ export default function Room() {
                     }
                 }}
                 >
-                <div>{meld.type.toUpperCase()}</div>
+                <div className="mb-1">
+                    <span className="font-semibold">
+                        {meld.type.toUpperCase()}
+                    </span>
+                    {" — "}
+                    <span
+                        className={
+                        room.players.find(p => p.uid === meld.createdBy)?.color
+                        }
+                    >
+                        {
+                        room.players.find(p => p.uid === meld.createdBy)
+                            ?.displayName || "Unknown"
+                        }
+                    </span>
+                </div>
+                
                 <div className="flex gap-1">
-                  {meld.cards.map(card => (
-                    <span key={card.id}>{card.id}</span>
-                  ))}
+                  {meld.cards.map(card => {
+                    const player = room.players.find(
+                        p => p.uid === card.addedBy
+                    );
+
+                    return (
+                        <span
+                        key={card.id}
+                        className={`px-2 py-1 rounded border ${
+                            player?.color || "text-white"
+                        }`}
+                        title={`Added by ${player?.displayName}`}
+                        >
+                        {card.id}
+                        </span>
+                    );
+                  })}
                 </div>
               </div>
             ))}
