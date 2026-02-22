@@ -115,19 +115,34 @@ export function canLayOff(card, meld) {
   if (meld.type === "run") {
     if (card.suit !== meld.cards[0].suit) return false;
 
-    const orders = meld.cards.map(c => c.order).sort((a, b) => a - b);
+    // Get sorted orders
+    const orders = meld.cards
+        .map(c => c.order)
+        .sort((a, b) => a - b);
 
     const min = orders[0];
     const max = orders[orders.length - 1];
 
-    // normal extension
+    // Normal extension
     if (card.order === min - 1) return true;
     if (card.order === max + 1) return true;
 
-    // circular K-A-2 handling
-    if (min === 1 && max === 13) {
-      if (card.order === 2) return true;
+    // ----- Circular Handling -----
+
+    // Case 1: Run like Q-K-A
+    if (orders.includes(13) && orders.includes(1)) {
+        const adjusted = orders.map(o => (o === 1 ? 14 : o)).sort((a,b)=>a-b);
+        const adjMin = adjusted[0];
+        const adjMax = adjusted[adjusted.length - 1];
+
+        if (card.order === 2 && adjMax === 14) return true;
     }
+
+    // Case 2: Adding Ace after King
+    if (max === 13 && card.order === 1) return true;
+
+    // Case 3: Adding King before Ace (rare case)
+    if (min === 1 && card.order === 13) return true;
 
     return false;
   }
