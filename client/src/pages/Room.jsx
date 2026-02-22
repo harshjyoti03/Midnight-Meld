@@ -223,7 +223,10 @@ export default function Room() {
   };
 
   return (
-    <div className="p-10 text-white">
+    <div className="p-10 text-white relative">
+        <div className="absolute top-4 right-6 text-sm text-cyan-300">
+            Players: {room.players?.length || 0}
+        </div>
 
       <h2 className="mb-4">Room Code: {room.inviteCode}</h2>
 
@@ -256,6 +259,16 @@ export default function Room() {
         <>
           <h3>Current Turn: {room.currentTurn}</h3>
 
+          <div className="flex gap-6 my-4">
+            <div>
+                Draw Pile: {room.drawPile?.length || 0} cards
+            </div>
+
+            <div>
+                Top Discard: {room.discardPile?.[0]?.id || "None"}
+            </div>
+          </div>
+
           {isMyTurn && !hasDrawn && (
             <div className="space-x-4 my-4">
               <button
@@ -279,14 +292,15 @@ export default function Room() {
               <div
                 key={card.id}
                 onClick={() => toggleSelect(card)}
+
                 className={`px-3 py-2 rounded cursor-pointer ${
-                  selectedCards.find(c => c.id === card.id)
+                    selectedCards.find(c => c.id === card.id)
                     ? "bg-blue-600"
                     : card.id === lastDrawnCardId
                     ? "bg-purple-600"
                     : "bg-gray-800"
                 }`}
-              >
+                >
                 {card.id}
               </div>
             ))}
@@ -298,6 +312,14 @@ export default function Room() {
               onClick={meldCards}
             >
               Meld Selected Cards
+            </button>
+          )}
+          {isMyTurn && hasDrawn && selectedCards.length === 1 && (
+            <button
+                className="bg-red-600 px-4 py-2 rounded mb-4 ml-4"
+                onClick={() => discardCard(selectedCards[0])}
+            >
+                Discard Selected Card
             </button>
           )}
 
@@ -320,6 +342,22 @@ export default function Room() {
           </div>
         </>
       )}
+      <button
+        className="bg-red-500 px-4 py-2 rounded mt-8"
+        onClick={async () => {
+            const updatedPlayers = room.players.filter(
+            p => p.uid !== auth.currentUser.uid
+            );
+
+            await updateDoc(doc(db, "rooms", roomId), {
+            players: updatedPlayers
+            });
+
+            navigate("/lobby");
+        }}
+        >
+        Leave Room
+      </button>
     </div>
   );
 }
