@@ -1,5 +1,6 @@
 // FULL UPDATED ROOM.JSX
 
+import { canLayOff } from "../utils/gameEngine";
 import { useParams, useNavigate } from "react-router-dom";
 import { doc, onSnapshot, updateDoc } from "firebase/firestore";
 import { db, auth } from "../firebase";
@@ -185,6 +186,42 @@ export default function Room() {
     setSelectedCards([]);
   };
 
+  // ---------------- LAY OFF ----------------
+
+  const layOffCard = async (card, meldIndex) => {
+    if (!isMyTurn || !hasDrawn) return;
+
+    const meld = room.tableMelds[meldIndex];
+
+    if (!canLayOff(card, meld)) {
+        alert("Invalid Layoff");
+        return;
+    }
+
+    const updatedPlayers = room.players.map(player => {
+        if (player.uid === auth.currentUser.uid) {
+        return {
+            ...player,
+            hand: player.hand.filter(c => c.id !== card.id)
+        };
+        }
+        return player;
+    });
+
+    const updatedMelds = [...room.tableMelds];
+    updatedMelds[meldIndex] = {
+        ...meld,
+        cards: [...meld.cards, card]
+    };
+
+    await updateDoc(doc(db, "rooms", roomId), {
+        players: updatedPlayers,
+        tableMelds: updatedMelds
+    });
+
+    setSelectedCards([]);
+  };
+
   // ---------------- DISCARD ----------------
 
   const discardCard = async (card) => {
@@ -355,7 +392,15 @@ export default function Room() {
           <h3>Table Melds:</h3>
           <div className="flex gap-4 flex-wrap">
             {room.tableMelds?.map((meld, index) => (
-              <div key={index} className="border p-2 rounded">
+              <div
+                key={index}
+                className="border p-2 rounded cursor-pointer hover:bg-gray-700"
+                onClick={() => {
+                    if (selectedCards.length === 1) {
+                    layOffCard(selectedCards[0], index);
+                    }
+                }}
+                >
                 <div>{meld.type.toUpperCase()}</div>
                 <div className="flex gap-1">
                   {meld.cards.map(card => (

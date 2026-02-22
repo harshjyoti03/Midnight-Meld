@@ -99,3 +99,38 @@ export function isValidRun(cards) {
 
   return false;
 }
+
+// ---------- LAYOFF VALIDATION ----------
+
+export function canLayOff(card, meld) {
+  if (meld.type === "set") {
+    if (card.rank !== meld.cards[0].rank) return false;
+
+    const existingSuits = new Set(meld.cards.map(c => c.suit));
+    if (existingSuits.has(card.suit)) return false;
+
+    return meld.cards.length < 4;
+  }
+
+  if (meld.type === "run") {
+    if (card.suit !== meld.cards[0].suit) return false;
+
+    const orders = meld.cards.map(c => c.order).sort((a, b) => a - b);
+
+    const min = orders[0];
+    const max = orders[orders.length - 1];
+
+    // normal extension
+    if (card.order === min - 1) return true;
+    if (card.order === max + 1) return true;
+
+    // circular K-A-2 handling
+    if (min === 1 && max === 13) {
+      if (card.order === 2) return true;
+    }
+
+    return false;
+  }
+
+  return false;
+}
