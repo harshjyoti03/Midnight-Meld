@@ -2,7 +2,13 @@ import { useParams, useNavigate } from "react-router-dom";
 import { doc, onSnapshot, updateDoc } from "firebase/firestore";
 import { db, auth } from "../firebase";
 import { useEffect, useState } from "react";
-import { createDeck, shuffleDeck, dealCards } from "../utils/gameEngine";
+import {
+  createDeck,
+  shuffleDeck,
+  dealCards,
+  isValidSet,
+  isValidRun
+} from "../utils/gameEngine";
 
 export default function Room() {
   const { roomId } = useParams();
@@ -12,6 +18,7 @@ export default function Room() {
   const [hasDrawn, setHasDrawn] = useState(false);
   const [lastDrawnCardId, setLastDrawnCardId] = useState(null);
   const [drawnFromDiscard, setDrawnFromDiscard] = useState(false);
+  const [selectedCards, setSelectedCards] = useState([]);
 
   useEffect(() => {
     const unsubscribe = onSnapshot(
@@ -24,7 +31,6 @@ export default function Room() {
         }
       }
     );
-
     return () => unsubscribe();
   }, [roomId, navigate]);
 
@@ -36,7 +42,6 @@ export default function Room() {
   const myPlayer = room.players.find(
     (p) => p.uid === auth.currentUser.uid
   );
-
   const myHand = myPlayer?.hand || [];
 
   // ---------------- AUTO SORT ----------------
@@ -76,7 +81,8 @@ export default function Room() {
       drawPile: remainingDeck,
       discardPile,
       currentTurn: room.players[0].uid,
-      round: 1
+      round: 1,
+      tableMelds: []
     });
   };
 
@@ -126,22 +132,70 @@ export default function Room() {
     setHasDrawn(true);
   };
 
+  // ---------------- SELECT ----------------
+
+  const toggleSelect = (card) => {
+    if (!isMyTurn || !hasDrawn) return;
+
+    setSelectedCards(prev => {
+      if (prev.find(c => c.id === card.id)) {
+        return prev.filter(c => c.id !== card.id);
+      }
+      return [...prev, card];
+    });
+  };
+
+  // ---------------- MELD ----------------
+
+  const meldCards = async () => {
+    if (!isMyTurn || !hasDrawn) return;
+    if (selectedCards.length < 3) return;
+
+    if (!isValidSet(selectedCards) && !isValidRun(selectedCards)) {
+      alert("Invalid Meld");
+      return;
+    }
+
+    const updatedPlayers = room.players.map(player => {
+      if (player.uid === auth.currentUser.uid) {
+        return {
+          ...player,
+          hand: player.hand.filter(
+            c => !selectedCards.find(s => s.id === c.id)
+          )
+        };
+      }
+      return player;
+    });
+
+    const newMeld = {
+      type: isValidSet(selectedCards) ? "set" : "run",
+      cards: selectedCards
+    };
+
+    await updateDoc(doc(db, "rooms", roomId), {
+      players: updatedPlayers,
+      tableMelds: [...(room.tableMelds || []), newMeld]
+    });
+
+    setSelectedCards([]);
+  };
+
   // ---------------- DISCARD ----------------
 
   const discardCard = async (card) => {
     if (!isMyTurn || !hasDrawn) return;
 
-    // 🚫 Strict discard prevention
     if (drawnFromDiscard && card.id === lastDrawnCardId) {
-      alert("You cannot discard the card drawn from discard pile in the same turn.");
+      alert("Cannot discard the card drawn from discard pile this turn.");
       return;
     }
 
-    const updatedPlayers = room.players.map((player) => {
+    const updatedPlayers = room.players.map(player => {
       if (player.uid === auth.currentUser.uid) {
         return {
           ...player,
-          hand: player.hand.filter((c) => c.id !== card.id)
+          hand: player.hand.filter(c => c.id !== card.id)
         };
       }
       return player;
@@ -150,76 +204,31 @@ export default function Room() {
     const updatedDiscard = [card, ...room.discardPile];
 
     const currentIndex = room.players.findIndex(
-      (p) => p.uid === room.currentTurn
+      p => p.uid === room.currentTurn
     );
-
     const nextIndex =
       (currentIndex + 1) % room.players.length;
-
-    const nextTurn = room.players[nextIndex].uid;
 
     await updateDoc(doc(db, "rooms", roomId), {
       players: updatedPlayers,
       discardPile: updatedDiscard,
-      currentTurn: nextTurn
+      currentTurn: room.players[nextIndex].uid
     });
 
     setHasDrawn(false);
+    setSelectedCards([]);
     setLastDrawnCardId(null);
     setDrawnFromDiscard(false);
   };
 
-  const leaveRoom = async () => {
-    const updatedPlayers = room.players.filter(
-      (p) => p.uid !== auth.currentUser.uid
-    );
-
-    await updateDoc(doc(db, "rooms", roomId), {
-      players: updatedPlayers
-    });
-
-    navigate("/lobby");
-  };
-
   return (
-    <div className="p-10 min-h-screen text-white">
-      <h1 className="text-2xl text-teal mb-4">
-        Room Code: {room.inviteCode}
-      </h1>
-
-      {room.status === "waiting" && (
-        <>
-          <h2>Players:</h2>
-          <ul className="mb-4">
-            {room.players.map((player, index) => (
-              <li key={index}>
-                {player.displayName}
-                {player.uid === room.hostId && " (Host)"}
-              </li>
-            ))}
-          </ul>
-
-          {isHost && (
-            <button
-              className="bg-teal px-6 py-2 rounded"
-              onClick={startGame}
-            >
-              Start Game
-            </button>
-          )}
-        </>
-      )}
+    <div className="p-10 text-white">
+      <h2>Current Turn: {room.currentTurn}</h2>
 
       {room.status === "playing" && (
         <>
-          <h2 className="text-cyan-400 mb-2">Game Started</h2>
-
-          <p>Current Turn: {room.currentTurn}</p>
-          <p>Draw Pile: {room.drawPile?.length} cards</p>
-          <p>Top Discard: {room.discardPile?.[0]?.id}</p>
-
           {isMyTurn && !hasDrawn && (
-            <div className="mt-4 space-x-4">
+            <div className="space-x-4 mb-4">
               <button
                 className="bg-green-600 px-4 py-2 rounded"
                 onClick={() => drawFromPile("draw")}
@@ -236,34 +245,55 @@ export default function Room() {
             </div>
           )}
 
-          <h3 className="mt-6 mb-2">Your Hand:</h3>
-
-          <div className="flex flex-wrap gap-2 mb-4">
-            {sortedHand.map((card) => (
+          <h3>Your Hand:</h3>
+          <div className="flex gap-2 flex-wrap mb-4">
+            {sortedHand.map(card => (
               <div
                 key={card.id}
-                className={`px-3 py-2 rounded cursor-pointer transition-all duration-200 ${
-                  card.id === lastDrawnCardId
-                    ? "bg-blue-600 border-2 border-cyan-300"
-                    : isMyTurn && hasDrawn
-                    ? "bg-red-700"
+                onClick={() => toggleSelect(card)}
+                className={`px-3 py-2 rounded cursor-pointer ${
+                  selectedCards.find(c => c.id === card.id)
+                    ? "bg-blue-600"
+                    : card.id === lastDrawnCardId
+                    ? "bg-purple-600"
                     : "bg-gray-800"
                 }`}
-                onClick={() => discardCard(card)}
               >
                 {card.id}
               </div>
             ))}
           </div>
+
+          {selectedCards.length >= 3 && (
+            <button
+              className="bg-cyan-600 px-4 py-2 rounded mb-4"
+              onClick={meldCards}
+            >
+              Meld Selected Cards
+            </button>
+          )}
+
+          {isMyTurn && hasDrawn && (
+            <p className="mb-2">
+              Select one card to discard to end turn.
+            </p>
+          )}
+
+          <h3>Table Melds:</h3>
+          <div className="flex gap-4 flex-wrap">
+            {room.tableMelds?.map((meld, index) => (
+              <div key={index} className="border p-2 rounded">
+                <div>{meld.type.toUpperCase()}</div>
+                <div className="flex gap-1">
+                  {meld.cards.map(card => (
+                    <span key={card.id}>{card.id}</span>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
         </>
       )}
-
-      <button
-        className="bg-red-500 px-6 py-2 rounded mt-6"
-        onClick={leaveRoom}
-      >
-        Leave Room
-      </button>
     </div>
   );
 }
