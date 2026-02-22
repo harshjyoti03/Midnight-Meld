@@ -1,3 +1,5 @@
+// FULL UPDATED ROOM.JSX
+
 import { useParams, useNavigate } from "react-router-dom";
 import { doc, onSnapshot, updateDoc } from "firebase/firestore";
 import { db, auth } from "../firebase";
@@ -39,7 +41,7 @@ export default function Room() {
   const isHost = room.hostId === auth.currentUser.uid;
   const isMyTurn = room.currentTurn === auth.currentUser.uid;
 
-  const myPlayer = room.players.find(
+  const myPlayer = room.players?.find(
     (p) => p.uid === auth.currentUser.uid
   );
   const myHand = myPlayer?.hand || [];
@@ -96,7 +98,6 @@ export default function Room() {
 
     if (drawPile.length === 0) {
       if (discardPile.length <= 1) return;
-
       const topCard = discardPile.shift();
       drawPile = shuffleDeck(discardPile);
       discardPile = [topCard];
@@ -187,7 +188,7 @@ export default function Room() {
     if (!isMyTurn || !hasDrawn) return;
 
     if (drawnFromDiscard && card.id === lastDrawnCardId) {
-      alert("Cannot discard the card drawn from discard pile this turn.");
+      alert("Cannot discard picked discard card this turn.");
       return;
     }
 
@@ -223,19 +224,46 @@ export default function Room() {
 
   return (
     <div className="p-10 text-white">
-      <h2>Current Turn: {room.currentTurn}</h2>
 
+      <h2 className="mb-4">Room Code: {room.inviteCode}</h2>
+
+      {/* WAITING ROOM */}
+      {room.status === "waiting" && (
+        <>
+          <h3>Players:</h3>
+          <ul className="mb-4">
+            {room.players?.map(player => (
+              <li key={player.uid}>
+                {player.displayName}
+                {player.uid === room.hostId && " (Host)"}
+              </li>
+            ))}
+          </ul>
+
+          {isHost && (
+            <button
+              className="bg-green-600 px-4 py-2 rounded"
+              onClick={startGame}
+            >
+              Start Game
+            </button>
+          )}
+        </>
+      )}
+
+      {/* PLAYING STATE */}
       {room.status === "playing" && (
         <>
+          <h3>Current Turn: {room.currentTurn}</h3>
+
           {isMyTurn && !hasDrawn && (
-            <div className="space-x-4 mb-4">
+            <div className="space-x-4 my-4">
               <button
                 className="bg-green-600 px-4 py-2 rounded"
                 onClick={() => drawFromPile("draw")}
               >
                 Draw from Deck
               </button>
-
               <button
                 className="bg-yellow-600 px-4 py-2 rounded"
                 onClick={() => drawFromPile("discard")}
@@ -273,11 +301,9 @@ export default function Room() {
             </button>
           )}
 
-          {isMyTurn && hasDrawn && (
-            <p className="mb-2">
-              Select one card to discard to end turn.
-            </p>
-          )}
+          <p className="mb-2">
+            Click a card to discard and end turn.
+          </p>
 
           <h3>Table Melds:</h3>
           <div className="flex gap-4 flex-wrap">
