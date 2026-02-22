@@ -134,3 +134,9 @@ export function canLayOff(card, meld) {
 
   return false;
 }
+
+// ---------- SCORE CALCULATION ----------
+
+export function calculateHandScore(hand) {
+  return hand.reduce((total, card) => total + card.value, 0);
+}

@@ -1,5 +1,6 @@
 // FULL UPDATED ROOM.JSX
 
+import { calculateHandScore } from "../utils/gameEngine";
 import { canLayOff } from "../utils/gameEngine";
 import { useParams, useNavigate } from "react-router-dom";
 import { doc, onSnapshot, updateDoc } from "firebase/firestore";
@@ -83,12 +84,16 @@ export default function Room() {
 
     await updateDoc(doc(db, "rooms", roomId), {
       status: "playing",
-      players: updatedPlayers,
-      drawPile: remainingDeck,
-      discardPile,
-      currentTurn: room.players[0].uid,
-      round: 1,
-      tableMelds: []
+        players: updatedPlayers,
+        drawPile: remainingDeck,
+        discardPile,
+        currentTurn: room.players[0].uid,
+        round: (room.round || 0) + 1,
+        tableMelds: [],
+        scores: room.scores || room.players.reduce((acc, p) => {
+            acc[p.uid] = 0;
+            return acc;
+        }, {})
     });
   };
 
@@ -250,10 +255,43 @@ export default function Room() {
     const nextIndex =
       (currentIndex + 1) % room.players.length;
 
+    // Check if player emptied hand
+    const updatedCurrentPlayer = updatedPlayers.find(
+        p => p.uid === auth.currentUser.uid
+    );
+
+    if (updatedCurrentPlayer.hand.length === 0) {
+        // ROUND OVER
+
+        const newScores = { ...room.scores };
+
+        updatedPlayers.forEach(player => {
+            if (player.uid === auth.currentUser.uid) {
+                // Winner gets points from others
+                return;
+            }
+
+            const handScore = calculateHandScore(player.hand);
+            newScores[auth.currentUser.uid] += handScore;
+            newScores[player.uid] -= handScore;
+        });
+
+        const winnerScore = newScores[auth.currentUser.uid];
+
+        await updateDoc(doc(db, "rooms", roomId), {
+            players: updatedPlayers,
+            discardPile: updatedDiscard,
+            scores: newScores,
+            status: winnerScore >= 500 ? "game_over" : "round_over"
+        });
+
+        return;
+    }
+
     await updateDoc(doc(db, "rooms", roomId), {
-      players: updatedPlayers,
-      discardPile: updatedDiscard,
-      currentTurn: room.players[nextIndex].uid
+        players: updatedPlayers,
+        discardPile: updatedDiscard,
+        currentTurn: room.players[nextIndex].uid
     });
 
     setHasDrawn(false);
@@ -272,6 +310,15 @@ export default function Room() {
         </div>
 
       <h2 className="mb-4">Room Code: {room.inviteCode}</h2>
+
+      <h3 className="mt-4 text-yellow-400">Scores:</h3>
+      <ul className="mb-4">
+        {room.players?.map(player => (
+            <li key={player.uid}>
+            {player.displayName}: {room.scores?.[player.uid] || 0}
+            </li>
+        ))}
+      </ul>
 
       {/* WAITING ROOM */}
       {room.status === "waiting" && (
@@ -412,15 +459,50 @@ export default function Room() {
           </div>
         </>
       )}
+      {/* ROUND OVER STATE */}
+      {room.status === "round_over" && (
+        <div className="mt-6 p-4 bg-gray-800 rounded">
+            <h2 className="text-green-400 text-lg mb-2">
+            Round Over!
+            </h2>
+            {isHost && (
+            <button
+                className="bg-green-700 px-4 py-2 rounded"
+                onClick={startGame}
+            >
+                Start Next Round
+            </button>
+            )}
+        </div>
+      )}
+
+      {/* GAME OVER STATE */}
+      {room.status === "game_over" && (
+        <div className="mt-6 p-4 bg-red-900 rounded">
+            <h2 className="text-red-400 text-xl">
+            Game Over!
+            </h2>
+            <p className="mt-2">
+            Winner:{" "}
+            <span className="text-yellow-400 font-bold">
+                {Object.keys(room.scores || {}).reduce((a, b) =>
+                room.scores[a] > room.scores[b] ? a : b
+                )}
+            </span>
+            </p>
+        </div>
+      )}
+
+
       <button
         className="bg-red-500 px-4 py-2 rounded mt-8"
         onClick={async () => {
             const updatedPlayers = room.players.filter(
-            p => p.uid !== auth.currentUser.uid
+                p => p.uid !== auth.currentUser.uid
             );
 
             await updateDoc(doc(db, "rooms", roomId), {
-            players: updatedPlayers
+                players: updatedPlayers
             });
 
             navigate("/lobby");
