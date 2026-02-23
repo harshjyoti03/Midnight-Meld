@@ -24,6 +24,24 @@ export default function Room() {
   const [drawnFromDiscard, setDrawnFromDiscard] = useState(false);
   const [selectedCards, setSelectedCards] = useState([]);
 
+  const sortMeldCards = (cards, type) => {
+    if (type === "set") {
+        // sets can just stay grouped — sort by suit for consistency
+        const suitOrder = ["♠", "♥", "♦", "♣"];
+        return [...cards].sort((a, b) => 
+        suitOrder.indexOf(a.suit) - suitOrder.indexOf(b.suit)
+        );
+    }
+
+    if (type === "run") {
+        return [...cards].sort((a, b) =>
+        rankOrder.indexOf(a.rank) - rankOrder.indexOf(b.rank)
+        );
+    }
+
+    return cards;
+  };
+
   useEffect(() => {
     const unsubscribe = onSnapshot(
       doc(db, "rooms", roomId),
@@ -75,19 +93,31 @@ export default function Room() {
 
     const { hands, remainingDeck } = dealCards(deck, playerCount);
 
-    const playerColors = [
-        "text-red-400",
-        "text-blue-400",
-        "text-green-400",
-        "text-yellow-400",
-        "text-purple-400",
-        "text-pink-400"
+    const PLAYER_COLORS = [
+        { text: "text-cyan-400", border: "border-cyan-400" },
+        { text: "text-orange-400", border: "border-orange-400" },
+        { text: "text-lime-400", border: "border-lime-400" },
+        { text: "text-purple-400", border: "border-purple-400" },
+        { text: "text-rose-400", border: "border-rose-400" },
+        { text: "text-blue-400", border: "border-blue-400" }
     ];
+
+    // Fisher-Yates shuffle
+    const shuffle = (array) => {
+        const arr = [...array];
+        for (let i = arr.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [arr[i], arr[j]] = [arr[j], arr[i]];
+        }
+        return arr;
+    };
+
+    const shuffledColors = shuffle(PLAYER_COLORS);
 
     const updatedPlayers = room.players.map((player, index) => ({
       ...player,
       hand: hands[index],
-      color: player.color || playerColors[index % playerColors.length]
+      color: shuffledColors[index % shuffledColors.length]
     }));
 
     const discardPile = [remainingDeck.shift()];
@@ -228,12 +258,14 @@ export default function Room() {
     });
 
     const updatedMelds = [...room.tableMelds];
+    const newCards = [
+        ...meld.cards,
+        { ...card, addedBy: auth.currentUser.uid }
+    ];
+
     updatedMelds[meldIndex] = {
         ...meld,
-        cards: [
-            ...meld.cards,
-            { ...card, addedBy: auth.currentUser.uid }
-        ]
+        cards: sortMeldCards(newCards, meld.type)
     };
 
     await updateDoc(doc(db, "rooms", roomId), {
@@ -348,7 +380,7 @@ export default function Room() {
             return (
             <li
                 key={player.uid}
-                className={`${player.color} ${isMe ? "font-bold" : ""}`}
+                className={`${player.color?.text} ${isMe ? "font-bold" : ""}`}
             >
                 {player.displayName}
                 {isMe && " (YOU)"}:{" "}
@@ -476,54 +508,52 @@ export default function Room() {
 
           <h3>Table Melds:</h3>
           <div className="flex gap-4 flex-wrap">
-            {room.tableMelds?.map((meld, index) => (
-              <div
-                key={index}
-                className="border p-2 rounded cursor-pointer hover:bg-gray-700"
-                onClick={() => {
+            {room.tableMelds?.map((meld, index) => {
+
+                const creator = room.players.find(
+                p => p.uid === meld.createdBy
+                );
+
+                return (
+                <div
+                    key={index}
+                    className={`border-2 p-3 rounded-lg cursor-pointer hover:bg-gray-700 ${creator?.color?.border || "border-gray-500"} shadow-md`}
+                    onClick={() => {
                     if (selectedCards.length === 1) {
-                    layOffCard(selectedCards[0], index);
+                        layOffCard(selectedCards[0], index);
                     }
-                }}
+                    }}
                 >
-                <div className="mb-1">
+                    <div className="mb-1">
                     <span className="font-semibold">
                         {meld.type.toUpperCase()}
                     </span>
                     {" — "}
-                    <span
-                        className={
-                        room.players.find(p => p.uid === meld.createdBy)?.color
-                        }
-                    >
-                        {
-                        room.players.find(p => p.uid === meld.createdBy)
-                            ?.displayName || "Unknown"
-                        }
+                    <span className={creator?.color?.text || "text-white"}>
+                        {creator?.displayName || "Unknown"}
                     </span>
-                </div>
-                
-                <div className="flex gap-1">
-                  {meld.cards.map(card => {
-                    const player = room.players.find(
-                        p => p.uid === card.addedBy
-                    );
+                    </div>
 
-                    return (
+                    <div className="flex gap-1">
+                    {sortMeldCards(meld.cards, meld.type).map(card => {
+                        const player = room.players.find(
+                        p => p.uid === card.addedBy
+                        );
+
+                        return (
                         <span
-                        key={card.id}
-                        className={`px-2 py-1 rounded border ${
-                            player?.color || "text-white"
-                        }`}
-                        title={`Added by ${player?.displayName}`}
+                            key={card.id}
+                            className={`px-2 py-1 rounded border ${player?.color?.border} ${player?.color?.text}`}
+                            title={`Added by ${player?.displayName}`}
                         >
-                        {card.id}
+                            {card.id}
                         </span>
-                    );
-                  })}
+                        );
+                    })}
+                    </div>
                 </div>
-              </div>
-            ))}
+                );
+            })}
           </div>
         </>
       )}
